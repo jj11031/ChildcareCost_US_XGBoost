@@ -1,0 +1,232 @@
+---
+title: "Childcare cost"
+author: Jayjit Das
+code-fold: true
+code-tools: true
+format:
+  html:
+    toc: true
+    warning: false
+---
+
+# Goal: Predict the cost of childcare in US counties based on various characteristics of each county.
+
+The emphasis of this project is on the utilization of tidymodels framework for the optimization of an xgboost model through [early stopping](https://en.wikipedia.org/wiki/Early_stopping#:~:text=In%20machine%20learning%2C%20early%20stopping,training%20data%20with%20each%20iteration.), employing the current week’s #TidyTuesday [dataset](https://github.com/rfordatascience/tidytuesday/tree/master/data/2023/2023-05-09) on childcare expenses in the United States.
+
+## Exploratory data analysis
+
+```{r}
+library(tidyverse)
+
+childcare_costs <- read_csv('https://raw.githubusercontent.com/rfordatascience/tidytuesday/master/data/2023/2023-05-09/childcare_costs.csv')
+
+glimpse(childcare_costs)
+```
+
+### Data Dictionary
+
+# `childcare_costs.csv`
+
+| variable                  | class  | description                                                                                                                                                                                                                       |
+|---------------------------|--------|-----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+| county_fips_code          | double | Four- or five-digit number that uniquely identifies the county in a state. The first two digits (for five-digit numbers) or 1 digit (for four-digit numbers) refer to the FIPS code of the state to which the county belongs.     |
+| study_year                | double | Year the data collection began for the market rate survey and in which ACS data is representative of, or the study publication date.                                                                                              |
+| unr_16                    | double | Unemployment rate of the population aged 16 years old or older.                                                                                                                                                                   |
+| funr_16                   | double | Unemployment rate of the female population aged 16 years old or older.                                                                                                                                                            |
+| munr_16                   | double | Unemployment rate of the male population aged 16 years old or older.                                                                                                                                                              |
+| unr_20to64                | double | Unemployment rate of the population aged 20 to 64 years old.                                                                                                                                                                      |
+| funr_20to64               | double | Unemployment rate of the female population aged 20 to 64 years old.                                                                                                                                                               |
+| munr_20to64               | double | Unemployment rate of the male population aged 20 to 64 years old.                                                                                                                                                                 |
+| flfpr_20to64              | double | Labor force participation rate of the female population aged 20 to 64 years old.                                                                                                                                                  |
+| flfpr_20to64_under6       | double | Labor force participation rate of the female population aged 20 to 64 years old who have children under 6 years old.                                                                                                              |
+| flfpr_20to64_6to17        | double | Labor force participation rate of the female population aged 20 to 64 years old who have children between 6 and 17 years old.                                                                                                     |
+| flfpr_20to64_under6_6to17 | double | Labor force participation rate of the female population aged 20 to 64 years old who have children under 6 years old and between 6 and 17 years old.                                                                               |
+| mlfpr_20to64              | double | Labor force participation rate of the male population aged 20 to 64 years old.                                                                                                                                                    |
+| pr_f                      | double | Poverty rate for families.                                                                                                                                                                                                        |
+| pr_p                      | double | Poverty rate for individuals.                                                                                                                                                                                                     |
+| mhi_2018                  | double | Median household income expressed in 2018 dollars.                                                                                                                                                                                |
+| me_2018                   | double | Median earnings expressed in 2018 dollars for the population aged 16 years old or older.                                                                                                                                          |
+| fme_2018                  | double | Median earnings for females expressed in 2018 dollars for the population aged 16 years old or older.                                                                                                                              |
+| mme_2018                  | double | Median earnings for males expressed in 2018 dollars for the population aged 16 years old or older.                                                                                                                                |
+| total_pop                 | double | Count of the total population.                                                                                                                                                                                                    |
+| one_race                  | double | Percent of population that identifies as being one race.                                                                                                                                                                          |
+| one_race_w                | double | Percent of population that identifies as being one race and being only White or Caucasian.                                                                                                                                        |
+| one_race_b                | double | Percent of population that identifies as being one race and being only Black or African American.                                                                                                                                 |
+| one_race_i                | double | Percent of population that identifies as being one race and being only American Indian or Alaska Native.                                                                                                                          |
+| one_race_a                | double | Percent of population that identifies as being one race and being only Asian.                                                                                                                                                     |
+| one_race_h                | double | Percent of population that identifies as being one race and being only Native Hawaiian or Pacific Islander.                                                                                                                       |
+| one_race_other            | double | Percent of population that identifies as being one race and being a different race not previously mentioned.                                                                                                                      |
+| two_races                 | double | Percent of population that identifies as being two or more races.                                                                                                                                                                 |
+| hispanic                  | double | Percent of population that identifies as being Hispanic or Latino regardless of race.                                                                                                                                             |
+| households                | double | Number of households.                                                                                                                                                                                                             |
+| h_under6_both_work        | double | Number of households with children under 6 years old with two parents that are both working.                                                                                                                                      |
+| h_under6_f_work           | double | Number of households with children under 6 years old with two parents with only the father working.                                                                                                                               |
+| h_under6_m_work           | double | Number of households with children under 6 years old with two parents with only the mother working.                                                                                                                               |
+| h_under6_single_m         | double | Number of households with children under 6 years old with a single mother.                                                                                                                                                        |
+| h_6to17_both_work         | double | Number of households with children between 6 and 17 years old with two parents that are both working.                                                                                                                             |
+| h_6to17_fwork             | double | Number of households with children between 6 and 17 years old with two parents with only the father working.                                                                                                                      |
+| h_6to17_mwork             | double | Number of households with children between 6 and 17 years old with two parents with only the mother working.                                                                                                                      |
+| h_6to17_single_m          | double | Number of households with children between 6 and 17 years old with a single mother.                                                                                                                                               |
+| emp_m                     | double | Percent of civilians employed in management, business, science, and arts occupations aged 16 years old or older in the county.                                                                                                    |
+| memp_m                    | double | Percent of male civilians employed in management, business, science, and arts occupations aged 16 years old or older in the county.                                                                                               |
+| femp_m                    | double | Percent of female civilians employed in management, business, science, and arts occupations aged 16 years old or older in the county.                                                                                             |
+| emp_service               | double | Percent of civilians employed in service occupations aged 16 years old and older in the county.                                                                                                                                   |
+| memp_service              | double | Percent of male civilians employed in service occupations aged 16 years old and older in the county.                                                                                                                              |
+| femp_service              | double | Percent of female civilians employed in service occupations aged 16 years old and older in the county.                                                                                                                            |
+| emp_sales                 | double | Percent of civilians employed in sales and office occupations aged 16 years old and older in the county.                                                                                                                          |
+| memp_sales                | double | Percent of male civilians employed in sales and office occupations aged 16 years old and older in the county.                                                                                                                     |
+| femp_sales                | double | Percent of female civilians employed in sales and office occupations aged 16 years old and older in the county.                                                                                                                   |
+| emp_n                     | double | Percent of civilians employed in natural resources, construction, and maintenance occupations aged 16 years old and older in the county.                                                                                          |
+| memp_n                    | double | Percent of male civilians employed in natural resources, construction, and maintenance occupations aged 16 years old and older in the county.                                                                                     |
+| femp_n                    | double | Percent of female civilians employed in natural resources, construction, and maintenance occupations aged 16 years old and older in the county.                                                                                   |
+| emp_p                     | double | Percent of civilians employed in production, transportation, and material moving occupations aged 16 years old and older in the county.                                                                                           |
+| memp_p                    | double | Percent of male civilians employed in production, transportation, and material moving occupations aged 16 years old and older in the county.                                                                                      |
+| femp_p                    | double | Percent of female civilians employed in production, transportation, and material moving occupations aged 16 years old and older in the county.                                                                                    |
+| mcsa                      | double | Weekly, full-time median price charged for Center-Based Care for those who are school age based on the results reported in the market rate survey report for the county or the rate zone/cluster to which the county is assigned. |
+| mfccs                     |        |                                                                                                                                                                                                                                   |
+
+In this dataset, there are numerous variables that could potentially serve as predictors. When dealing with large datasets with many variables, some of which are strongly correlated, I frequently use xgboost as a modeling algorithm due to its effectiveness.
+
+Before we proceed with the modeling, it’s beneficial to conduct some exploratory data analysis. Specifically, we’re interested in understanding how the **mcsa** (the median weekly cost for school-aged children in childcare centers) has evolved over time.
+
+```{r}
+# Calculate the lower and upper bounds for outliers
+childcare_costs |>
+  ggplot(aes(study_year, mcsa, group = study_year, fill = study_year)) +
+  geom_violin(alpha = 0.8, show.legend = FALSE) +
+  scale_fill_distiller(palette = "Blues")
+
+```
+
+Let us visualize how are childcare costs related to `mhi_2018` (median household income) and `flfpr_20to64` (labor force participation for women).
+
+```{r}
+childcare_costs |>
+  ggplot(aes(mhi_2018, mcsa, color = flfpr_20to64)) +
+  geom_point(alpha = 0.5) +
+  scale_x_log10() +
+scale_color_distiller(palette = "Spectral")+ theme_minimal() 
+```
+
+In counties with lower income levels, the cost of childcare is observed to be relatively stable, while in counties with higher income levels, an escalation in childcare costs is noted. Furthermore, a higher prevalence of women participating in the workforce is seen in high-income counties.
+
+Let's check the racial composition of these counties.
+
+```{r}
+childcare_costs |>
+  select(mcsa, starts_with("one_race"), mhi_2018) |>
+  select(-one_race) |>
+  pivot_longer(starts_with("one_race")) |>
+  ggplot(aes(value, mcsa, color = mhi_2018)) +
+  geom_point(alpha = 0.5) +
+  facet_wrap(vars(name), scales = "free_x") +
+  scale_color_distiller(palette = "Spectral")+ theme_minimal() +
+  labs(x = "% of population")
+```
+
+In counties with a higher Black population (one_race_b), it is observed that both household income and childcare costs are lower. Conversely, in counties with a higher White population (one_race_w), both household income and childcare costs are seen to be higher. A trend appears to exist in counties with a higher Asian population (one_race_a), where an increase in the Asian population is associated with higher childcare costs. It is important to note that these relationships are not causal, but rather, they are indicative of the intricate interplay between race, socioeconomic class, and geographical location in the U.S.
+
+## Building a model
+
+The initiation of our modeling process involves the establishment of our “data budget.” In this instance, the prediction target is mcsa (the costs associated with school-age children in childcare centers), necessitating the removal of other childcare cost measures related to babies, toddlers, and family-based childcare, among others. The FIPS codes, which explicitly encode location, are also to be removed, shifting the focus to county characteristics such as household income and the number of households with children. Given the substantial size of this dataset, it is [suggested](https://www.tmwr.org/resampling.html#validation) that a single validation set be utilized.
+
+```{r}
+library(tidymodels)
+
+set.seed(111)
+childcare_split <- childcare_costs |>
+  select(-matches("^mc_|^mfc")) |>
+  select(-county_fips_code) |>
+  na.omit() |>
+  initial_split(strata = mcsa)
+
+childcare_train <- training(childcare_split)
+childcare_test <- testing(childcare_split)
+
+set.seed(222)
+childcare_set <- validation_split(childcare_train)
+childcare_set
+```
+
+Given that all predictors are already in numeric form, there is no requirement for any special feature engineering; a formula such as mcsa \~ … can be utilized. However, there is a need to establish a tunable xgboost model specification with [early stopping](https://www.geeksforgeeks.org/regularization-by-early-stopping/). The number of trees will be maintained as a constant (and not excessively high), the stop_iter (the early stopping parameter) will be set to tune(), and a few other parameters will be tuned. It should be noted that a validation set needs to be established (which in this case is a proportion of the training set) to be reserved for determining when to stop.
+
+```{r}
+xgb_spec <-
+  boost_tree(
+    trees = 500,
+    min_n = tune(),
+    mtry = tune(),
+    stop_iter = tune(),
+    learn_rate = 0.01
+  ) |>
+  set_engine("xgboost", validation = 0.2) |>
+  set_mode("regression")
+
+xgb_wf <- workflow(mcsa ~ ., xgb_spec)
+xgb_wf
+```
+
+The model is prepared for deployment. The next step involves adjusting various hyperparameters using the training set, which includes a subset reserved for early stopping, in addition to our validation set.
+
+```{r}
+doParallel::registerDoParallel()
+set.seed(234)
+xgb_rs <- tune_grid(xgb_wf, childcare_set, grid = 15)
+xgb_rs
+```
+
+## Evaluating results 
+
+Let's see how this turned out.
+
+```{r}
+autoplot(xgb_rs)
+```
+
+Visualizing the top results
+
+```{r}
+show_best(xgb_rs, "rmse")
+```
+
+The optimal Root Mean Square Error (RMSE) is slightly over \$20. This value provides an estimate of the accuracy with which we can predict the median childcare cost in a US county, given that the median cost in this dataset was approximately \$100.
+
+We will now employ the **`last_fit()`** function to fit the model one last time using the training data and evaluate its performance on the test data, utilizing the numerically optimal result obtained from **`xgb_rs`**.
+
+```{r}
+childcare_fit <- xgb_wf |>
+  finalize_workflow(select_best(xgb_rs, "rmse")) |>
+  last_fit(childcare_split)
+
+childcare_fit
+```
+
+Let's see how did this model perform on the testing data, that was not used in tuning or training.
+
+```{r}
+collect_metrics(childcare_fit)
+```
+
+Most important features for the target variable in this xgboost model.
+
+```{r}
+library(vip)
+
+extract_workflow(childcare_fit) |>
+  extract_fit_parsnip() |>
+  vip(num_features = 15, geom = "point")
+
+```
+
+In this model, significant influences are exerted by the percentage of the county’s population identified as Asian, the median income of households, the median earnings for women, the year, and the total number of households in the county.
+
+## Deploying the model
+
+Object created for deploying the model.
+
+```{r}
+library(vetiver)
+v <- extract_workflow(childcare_fit) |>
+  vetiver_model("childcare-costs-xgb")
+v
+```
